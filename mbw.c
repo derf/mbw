@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 /* how many runs to average by default */
-#define DEFAULT_NR_LOOPS 10
+#define DEFAULT_NR_LOOPS 40
 
 /* we have 3 tests at the moment */
 #define MAX_TESTS 3
@@ -28,7 +28,7 @@
 #define TEST_MCBLOCK 2
 
 /* version number */
-#define VERSION "1.5"
+#define VERSION "1.5+smaug"
 
 /*
  * MBW memory bandwidth benchmark
@@ -151,18 +151,16 @@ void printout(double te, double mt, int type)
 {
     switch(type) {
         case TEST_MEMCPY:
-            printf("Method: MEMCPY\t");
+            printf("e_method=MEMCPY ");
             break;
         case TEST_DUMB:
-            printf("Method: DUMB\t");
+            printf("e_method=DUMB ");
             break;
         case TEST_MCBLOCK:
-            printf("Method: MCBLOCK\t");
+            printf("e_method=MCBLOCK ");
             break;
     }
-    printf("Elapsed: %.5f\t", te);
-    printf("MiB: %.5f\t", mt);
-    printf("Copy: %.3f MiB/s\n", mt/te);
+    printf("| bandwidth_MiBps=%f\n", mt/te);
     return;
 }
 
@@ -287,7 +285,7 @@ int main(int argc, char **argv)
             for (i=0; nr_loops==0 || i<nr_loops; i++) {
                 te=worker(asize, a, b, testno, block_size);
                 te_sum+=te;
-                printf("%d\t", i);
+                printf("[::] block_size_B=%llu array_size_B=%llu ", block_size, asize*long_size);
                 printout(te, mt, testno);
             }
             if(showavg) {
