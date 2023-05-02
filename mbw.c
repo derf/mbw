@@ -6,12 +6,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
+#include <err.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+
+#ifdef MULTITHREADED
+#include <pthread.h>
+#include <semaphore.h>
+#endif
 
 /* how many runs to average by default */
 #define DEFAULT_NR_LOOPS 40
@@ -51,6 +56,19 @@
  * watch out for swap usage (or turn off swap)
  */
 
+#ifdef MULTITHREADED
+unsigned long num_threads = 1;
+volatile unsigned int done = 0;
+pthread_t *threads;
+sem_t start_sem, stop_sem, sync_sem;
+#endif
+
+long *arr_a, *arr_b; /* the two arrays to be copied from/to */
+unsigned long long arr_size=0; /* array size (elements in array) */
+unsigned int test_type;
+/* fixed memcpy block size for -t2 */
+unsigned long long block_size=DEFAULT_BLOCK_SIZE;
+
 void usage()
 {
     printf("mbw memory benchmark v%s, https://github.com/raas/mbw\n", VERSION);
@@ -72,13 +90,13 @@ void usage()
 
 /* allocate a test array and fill it with data
  * so as to force Linux to _really_ allocate it */
-long *make_array(unsigned long long asize)
+long *make_array()
 {
     unsigned long long t;
     unsigned int long_size=sizeof(long);
     long *a;
 
-    a=calloc(asize, long_size);
+    a=calloc(arr_size, long_size);
 
     if(NULL==a) {
         perror("Error allocating memory");
@@ -86,37 +104,109 @@ long *make_array(unsigned long long asize)
     }
 
     /* make sure both arrays are allocated, fill with pattern */
-    for(t=0; t<asize; t++) {
+    for(t=0; t<arr_size; t++) {
         a[t]=0xaa;
     }
     return a;
 }
 
+#ifdef MULTITHREADED
+void *thread_worker(void *arg)
+{
+    unsigned long thread_id = (unsigned long)arg;
+    unsigned int long_size=sizeof(long);
+    unsigned long long array_bytes=arr_size*long_size;
+    unsigned long long t;
+    unsigned long long const dumb_start = thread_id * (arr_size / num_threads);
+    unsigned long long const dumb_stop = (thread_id + 1) * (arr_size / num_threads);
+
+
+    while (!done) {
+        if (sem_wait(&start_sem) != 0) {
+            err(1, "sem_wait(start_sem");
+        }
+        if (done) {
+            return NULL;
+        }
+        if(test_type==TEST_MEMCPY) { /* memcpy test */
+            memcpy(arr_b + (thread_id * (arr_size / num_threads)), arr_a + (thread_id * (arr_size / num_threads)), array_bytes / num_threads);
+        } else if(test_type==TEST_MCBLOCK) { /* memcpy block test */
+            char* src = (char*)(arr_a + (thread_id * (arr_size / num_threads)));
+            char* dst = (char*)(arr_b + (thread_id * (arr_size / num_threads)));
+            for (t=array_bytes / num_threads; t >= block_size; t-=block_size, src+=block_size){
+                dst=(char *) memcpy(dst, src, block_size) + block_size;
+            }
+            if(t) {
+                dst=(char *) memcpy(dst, src, t) + t;
+            }
+        } else if(test_type==TEST_DUMB) { /* dumb test */
+            for(t=dumb_start; t<dumb_stop; t++) {
+                arr_b[t]=arr_a[t];
+            }
+        }
+        if (sem_post(&stop_sem) != 0) {
+            err(1, "sem_post(stop_sem)");
+        }
+        if (sem_wait(&sync_sem) != 0) {
+            err(1, "sem_wait(sync_sem)");
+        }
+    }
+    return NULL;
+}
+
+void start_threads()
+{
+    for (unsigned int i = 0 ; i < num_threads; i++) {
+        sem_post(&start_sem);
+    }
+}
+
+void await_threads()
+{
+    for (unsigned int i = 0 ; i < num_threads; i++) {
+        sem_wait(&stop_sem);
+    }
+}
+
+void sync_threads()
+{
+    for (unsigned int i = 0 ; i < num_threads; i++) {
+        sem_post(&sync_sem);
+    }
+}
+#endif
+
 /* actual benchmark */
-/* asize: number of type 'long' elements in test arrays
+/* arr_size: number of type 'long' elements in test arrays
  * long_size: sizeof(long) cached
- * type: 0=use memcpy, 1=use dumb copy loop (whatever GCC thinks best)
+ * test_type: 0=use memcpy, 1=use dumb copy loop (whatever GCC thinks best)
  *
  * return value: elapsed time in seconds
  */
-double worker(unsigned long long asize, long *a, long *b, int type, unsigned long long block_size)
+double worker()
 {
-    unsigned long long t;
     struct timeval starttime, endtime;
     double te;
-    unsigned int long_size=sizeof(long);
     /* array size in bytes */
-    unsigned long long array_bytes=asize*long_size;
 
-    if(type==TEST_MEMCPY) { /* memcpy test */
-        /* timer starts */
+#ifdef MULTITHREADED
+    gettimeofday(&starttime, NULL);
+    start_threads();
+    await_threads();
+    gettimeofday(&endtime, NULL);
+    sync_threads();
+#else
+
+    unsigned int long_size=sizeof(long);
+    unsigned long long array_bytes=arr_size*long_size;
+    unsigned long long t;
+    if(test_type==TEST_MEMCPY) { /* memcpy test */
         gettimeofday(&starttime, NULL);
-        memcpy(b, a, array_bytes);
-        /* timer stops */
+        memcpy(arr_b, arr_a, array_bytes);
         gettimeofday(&endtime, NULL);
-    } else if(type==TEST_MCBLOCK) { /* memcpy block test */
-        char* src = (char*)a;
-        char* dst = (char*)b;
+    } else if(test_type==TEST_MCBLOCK) { /* memcpy block test */
+        char* src = (char*)arr_a;
+        char* dst = (char*)arr_b;
         gettimeofday(&starttime, NULL);
         for (t=array_bytes; t >= block_size; t-=block_size, src+=block_size){
             dst=(char *) memcpy(dst, src, block_size) + block_size;
@@ -125,13 +215,14 @@ double worker(unsigned long long asize, long *a, long *b, int type, unsigned lon
             dst=(char *) memcpy(dst, src, t) + t;
         }
         gettimeofday(&endtime, NULL);
-    } else if(type==TEST_DUMB) { /* dumb test */
+    } else if(test_type==TEST_DUMB) { /* dumb test */
         gettimeofday(&starttime, NULL);
-        for(t=0; t<asize; t++) {
-            b[t]=a[t];
+        for(t=0; t<arr_size; t++) {
+            arr_b[t]=arr_a[t];
         }
         gettimeofday(&endtime, NULL);
     }
+#endif
 
     te=((double)(endtime.tv_sec*1000000-starttime.tv_sec*1000000+endtime.tv_usec-starttime.tv_usec))/1000000;
 
@@ -143,13 +234,13 @@ double worker(unsigned long long asize, long *a, long *b, int type, unsigned lon
 /* pretty print worker's output in human-readable terms */
 /* te: elapsed time in seconds
  * mt: amount of transferred data in MiB
- * type: see 'worker' above
+ * test_type: see 'worker' above
  *
  * return value: -
  */
-void printout(double te, double mt, int type)
+void printout(double te, double mt)
 {
-    switch(type) {
+    switch(test_type) {
         case TEST_MEMCPY:
             printf("e_method=MEMCPY ");
             break;
@@ -170,18 +261,14 @@ int main(int argc, char **argv)
 {
     unsigned int long_size=0;
     double te, te_sum; /* time elapsed */
-    unsigned long long asize=0; /* array size (elements in array) */
-    int i;
-    long *a, *b; /* the two arrays to be copied from/to */
+    unsigned int i;
     int o; /* getopt options */
     unsigned long testno;
 
     /* options */
 
     /* how many runs to average? */
-    int nr_loops=DEFAULT_NR_LOOPS;
-    /* fixed memcpy block size for -t2 */
-    unsigned long long block_size=DEFAULT_BLOCK_SIZE;
+    unsigned int nr_loops=DEFAULT_NR_LOOPS;
     /* show average, -a */
     int showavg=1;
     /* what tests to run (-t x) */
@@ -193,7 +280,7 @@ int main(int argc, char **argv)
     tests[1]=0;
     tests[2]=0;
 
-    while((o=getopt(argc, argv, "haqn:t:b:")) != EOF) {
+    while((o=getopt(argc, argv, "haqn:N:t:b:")) != EOF) {
         switch(o) {
             case 'h':
                 usage();
@@ -205,6 +292,11 @@ int main(int argc, char **argv)
             case 'n': /* no. loops */
                 nr_loops=strtoul(optarg, (char **)NULL, 10);
                 break;
+#ifdef MULTITHREADED
+            case 'N': /* no. threads */
+                num_threads=strtoul(optarg, (char **)NULL, 10);
+                break;
+#endif
             case 't': /* test to run */
                 testno=strtoul(optarg, (char **)NULL, 10);
                 if(testno>MAX_TESTS-1) {
@@ -254,24 +346,42 @@ int main(int argc, char **argv)
 
     /* ------------------------------------------------------ */
 
-    long_size=sizeof(long); /* the size of long on this platform */
-    asize=1024*1024/long_size*mt; /* how many longs then in one array? */
+#ifdef MULTITHREADED
+    if (sem_init(&start_sem, 0, 0) != 0) {
+        err(1, "sem_init");
+    }
+    if (sem_init(&stop_sem, 0, 0) != 0) {
+        err(1, "sem_init");
+    }
+    if (sem_init(&sync_sem, 0, 0) != 0) {
+        err(1, "sem_init");
+    }
+    threads = calloc(num_threads, sizeof(pthread_t));
+    for (i=0; i < num_threads; i++) {
+        if (pthread_create(&threads[i], NULL, thread_worker, (void*)(unsigned long)i) != 0) {
+            err(1, "pthread_create");
+        }
+    }
+#endif
 
-    if(asize*long_size < block_size) {
+    long_size=sizeof(long); /* the size of long on this platform */
+    arr_size=1024*1024/long_size*mt; /* how many longs then in one array? */
+
+    if(arr_size*long_size < block_size) {
         printf("Error: array size larger than block size (%llu bytes)!\n", block_size);
         exit(1);
     }
 
     if(!quiet) {
         printf("Long uses %d bytes. ", long_size);
-        printf("Allocating 2*%lld elements = %lld bytes of memory.\n", asize, 2*asize*long_size);
+        printf("Allocating 2*%lld elements = %lld bytes of memory.\n", arr_size, 2*arr_size*long_size);
         if(tests[2]) {
             printf("Using %lld bytes as blocks for memcpy block copy test.\n", block_size);
         }
     }
 
-    a=make_array(asize);
-    b=make_array(asize);
+    arr_a=make_array();
+    arr_b=make_array();
 
     /* ------------------------------------------------------ */
     if(!quiet) {
@@ -279,24 +389,34 @@ int main(int argc, char **argv)
     }
 
     /* run all tests requested, the proper number of times */
-    for(testno=0; testno<MAX_TESTS; testno++) {
+    for(test_type=0; test_type<MAX_TESTS; test_type++) {
         te_sum=0;
-        if(tests[testno]) {
+        if(tests[test_type]) {
             for (i=0; nr_loops==0 || i<nr_loops; i++) {
-                te=worker(asize, a, b, testno, block_size);
+                te=worker();
                 te_sum+=te;
-                printf("[::] block_size_B=%llu array_size_B=%llu ", block_size, asize*long_size);
-                printout(te, mt, testno);
+                printf("[::] block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
+                printout(te, mt);
             }
             if(showavg) {
                 printf("AVG\t");
-                printout(te_sum/nr_loops, mt, testno);
+                printout(te_sum/nr_loops, mt);
             }
         }
     }
 
-    free(a);
-    free(b);
+#ifdef MULTITHREADED
+    done = 1;
+    start_threads();
+    for (i=0; i < num_threads; i++) {
+        if (pthread_join(threads[i], NULL) != 0) {
+            err(1, "pthread_join");
+        }
+    }
+#endif
+
+    free(arr_a);
+    free(arr_b);
     return 0;
 }
 
