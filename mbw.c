@@ -396,6 +396,11 @@ int main(int argc, char **argv)
                 te=worker();
                 te_sum+=te;
                 printf("[::] block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
+#ifdef MULTITHREADED
+                printf("n_threads=%ld ", num_threads);
+#else
+                printf("n_threads=1 ", block_size, arr_size*long_size);
+#endif
                 printout(te, mt);
             }
             if(showavg) {
