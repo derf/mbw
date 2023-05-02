@@ -185,15 +185,15 @@ void sync_threads()
  */
 double worker()
 {
-    struct timeval starttime, endtime;
+    struct timespec starttime, endtime;
     double te;
     /* array size in bytes */
 
 #ifdef MULTITHREADED
-    gettimeofday(&starttime, NULL);
+    clock_gettime(CLOCK_MONOTONIC, &starttime);
     start_threads();
     await_threads();
-    gettimeofday(&endtime, NULL);
+    clock_gettime(CLOCK_MONOTONIC, &endtime);
     sync_threads();
 #else
 
@@ -201,30 +201,30 @@ double worker()
     unsigned long long array_bytes=arr_size*long_size;
     unsigned long long t;
     if(test_type==TEST_MEMCPY) { /* memcpy test */
-        gettimeofday(&starttime, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
         memcpy(arr_b, arr_a, array_bytes);
-        gettimeofday(&endtime, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
     } else if(test_type==TEST_MCBLOCK) { /* memcpy block test */
         char* src = (char*)arr_a;
         char* dst = (char*)arr_b;
-        gettimeofday(&starttime, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
         for (t=array_bytes; t >= block_size; t-=block_size, src+=block_size){
             dst=(char *) memcpy(dst, src, block_size) + block_size;
         }
         if(t) {
             dst=(char *) memcpy(dst, src, t) + t;
         }
-        gettimeofday(&endtime, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
     } else if(test_type==TEST_DUMB) { /* dumb test */
-        gettimeofday(&starttime, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
         for(t=0; t<arr_size; t++) {
             arr_b[t]=arr_a[t];
         }
-        gettimeofday(&endtime, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
     }
 #endif
 
-    te=((double)(endtime.tv_sec*1000000-starttime.tv_sec*1000000+endtime.tv_usec-starttime.tv_usec))/1000000;
+    te=((double)(endtime.tv_sec*1000000000-starttime.tv_sec*1000000000+endtime.tv_nsec-starttime.tv_nsec))/1000000000;
 
     return te;
 }
