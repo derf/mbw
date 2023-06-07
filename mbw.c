@@ -251,7 +251,7 @@ void printout(double te, double mt)
             printf("e_method=MCBLOCK ");
             break;
     }
-    printf("| bandwidth_MiBps=%f\n", mt/te);
+    printf("| data_MiB=%f time_s=%f throughput_dram_dram_MiBps=%f\n", mt, te, mt/te);
     return;
 }
 
@@ -395,11 +395,11 @@ int main(int argc, char **argv)
             for (i=0; nr_loops==0 || i<nr_loops; i++) {
                 te=worker();
                 te_sum+=te;
-                printf("[::] block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
+                printf("[::] CPU transfer | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
 #ifdef MULTITHREADED
                 printf("n_threads=%ld ", num_threads);
 #else
-                printf("n_threads=1 ", block_size, arr_size*long_size);
+                printf("n_threads=1 ");
 #endif
                 printout(te, mt);
             }
