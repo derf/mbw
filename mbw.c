@@ -18,6 +18,11 @@
 #include <semaphore.h>
 #endif
 
+#ifdef NUMA
+#include <numaif.h>
+#include <numa.h>
+#endif
+
 /* how many runs to average by default */
 #define DEFAULT_NR_LOOPS 40
 
@@ -69,6 +74,15 @@ unsigned int test_type;
 /* fixed memcpy block size for -t2 */
 unsigned long long block_size=DEFAULT_BLOCK_SIZE;
 
+#ifdef NUMA
+void* mp_pages[1];
+int mp_status[1];
+int mp_nodes[1];
+int numa_node_a = -1;
+int numa_node_b = -1;
+int numa_node_cpu = -1;
+#endif
+
 void usage()
 {
     printf("mbw memory benchmark v%s, https://github.com/raas/mbw\n", VERSION);
@@ -81,6 +95,9 @@ void usage()
     printf("	-t%d: memcpy test with fixed block size\n", TEST_MCBLOCK);
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
+#ifdef NUMA
+    printf("	-c <node>: schedule task/threads on NUME node\n");
+#endif
     printf("(will then use two arrays, watch out for swapping)\n");
     printf("'Bandwidth' is amount of data copied over the time this operation took.\n");
     printf("\nThe default is to run all tests available.\n");
@@ -280,7 +297,7 @@ int main(int argc, char **argv)
     tests[1]=0;
     tests[2]=0;
 
-    while((o=getopt(argc, argv, "haqn:N:t:b:")) != EOF) {
+    while((o=getopt(argc, argv, "haqn:N:t:b:c:")) != EOF) {
         switch(o) {
             case 'h':
                 usage();
@@ -289,6 +306,11 @@ int main(int argc, char **argv)
             case 'a': /* suppress printing average */
                 showavg=0;
                 break;
+#ifdef NUMA
+            case 'c': /* NUMA node */
+                numa_node_cpu = strtoul(optarg, (char **)NULL, 10);
+                break;
+#endif
             case 'n': /* no. loops */
                 nr_loops=strtoul(optarg, (char **)NULL, 10);
                 break;
@@ -383,6 +405,37 @@ int main(int argc, char **argv)
     arr_a=make_array();
     arr_b=make_array();
 
+#ifdef NUMA
+    mp_pages[0] = arr_a;
+    if (move_pages(0, 1, mp_pages, NULL, mp_status, 0) == -1) {
+        perror("move_pages(arr_a)");
+    }
+    else if (mp_status[0] < 0) {
+        printf("move_pages error: %d", mp_status[0]);
+    }
+    else {
+        numa_node_a = mp_status[0];
+    }
+
+    mp_pages[0] = arr_b;
+    if (move_pages(0, 1, mp_pages, NULL, mp_status, 0) == -1) {
+        perror("move_pages(arr_b)");
+    }
+    else if (mp_status[0] < 0) {
+        printf("move_pages error: %d", mp_status[0]);
+    }
+    else {
+        numa_node_b = mp_status[0];
+    }
+
+    if (numa_node_cpu != -1) {
+        if (numa_run_on_node(numa_node_cpu) == -1) {
+            perror("numa_run_on_node");
+            numa_node_cpu = -1;
+        }
+    }
+#endif
+
     /* ------------------------------------------------------ */
     if(!quiet) {
         printf("Getting down to business... Doing %d runs per test.\n", nr_loops);
@@ -400,6 +453,11 @@ int main(int argc, char **argv)
                 printf("n_threads=%ld ", num_threads);
 #else
                 printf("n_threads=1 ");
+#endif
+#ifdef NUMA
+                printf("from_numa_node=%d to_numa_node=%d cpu_numa_node=%d numa_distance_dram_dram=%d numa_distance_dram_cpu=%d numa_distance_cpu_dram=%d ", numa_node_a, numa_node_b, numa_node_cpu, numa_distance(numa_node_a, numa_node_b), numa_distance(numa_node_a, numa_node_cpu), numa_distance(numa_node_cpu, numa_node_b));
+#else
+                printf("from_numa_node=X to_numa_node=X cpu_numa_node=X numa_distance_dram_dram=X numa_distance_dram_cpu=X numa_distance_cpu_dram=X ");
 #endif
                 printout(te, mt);
             }
