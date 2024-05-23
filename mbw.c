@@ -81,6 +81,8 @@ int mp_nodes[1];
 int numa_node_a = -1;
 int numa_node_b = -1;
 int numa_node_cpu = -1;
+struct bitmask* bitmask_a = NULL;
+struct bitmask* bitmask_b = NULL;
 #endif
 
 void usage()
@@ -97,6 +99,8 @@ void usage()
     printf("	-q: quiet (print statistics only)\n");
 #ifdef NUMA
     printf("	-c <node>: schedule task/threads on NUME node\n");
+    printf("	-c <node>: allocate source array on NUMA node\n");
+    printf("	-c <node>: allocate target array on NUMA node\n");
 #endif
     printf("(will then use two arrays, watch out for swapping)\n");
     printf("'Bandwidth' is amount of data copied over the time this operation took.\n");
@@ -286,8 +290,6 @@ int main(int argc, char **argv)
 
     /* how many runs to average? */
     unsigned int nr_loops=DEFAULT_NR_LOOPS;
-    /* show average, -a */
-    int showavg=1;
     /* what tests to run (-t x) */
     int tests[MAX_TESTS];
     double mt=0; /* MiBytes transferred == array size in MiB */
@@ -297,16 +299,19 @@ int main(int argc, char **argv)
     tests[1]=0;
     tests[2]=0;
 
-    while((o=getopt(argc, argv, "haqn:N:t:b:c:")) != EOF) {
+    while((o=getopt(argc, argv, "ha:b:c:qn:N:t:B:")) != EOF) {
         switch(o) {
             case 'h':
                 usage();
                 exit(1);
                 break;
-            case 'a': /* suppress printing average */
-                showavg=0;
-                break;
 #ifdef NUMA
+            case 'a': /* NUMA node */
+                bitmask_a = numa_parse_nodestring(optarg);
+                break;
+            case 'b': /* NUMA node */
+                bitmask_b = numa_parse_nodestring(optarg);
+                break;
             case 'c': /* NUMA node */
                 numa_node_cpu = strtoul(optarg, (char **)NULL, 10);
                 break;
@@ -327,7 +332,7 @@ int main(int argc, char **argv)
                 }
                 tests[testno]=1;
                 break;
-            case 'b': /* block size in bytes*/
+            case 'B': /* block size in bytes*/
                 block_size=strtoull(optarg, (char **)NULL, 10);
                 if(0>=block_size) {
                     printf("Error: what block size do you mean?\n");
@@ -402,8 +407,28 @@ int main(int argc, char **argv)
         }
     }
 
+#ifdef NUMA
+    struct bitmask *bitmask_all = numa_allocate_nodemask();
+    numa_bitmask_setall(bitmask_all);
+    if (bitmask_a) {
+        numa_set_membind(bitmask_a);
+        numa_free_nodemask(bitmask_a);
+    }
+#endif
     arr_a=make_array();
+
+#ifdef NUMA
+    if (bitmask_b) {
+        numa_set_membind(bitmask_b);
+        numa_free_nodemask(bitmask_b);
+    }
+#endif
     arr_b=make_array();
+
+#ifdef NUMA
+    numa_set_membind(bitmask_all);
+    numa_free_nodemask(bitmask_all);
+#endif
 
 #ifdef NUMA
     mp_pages[0] = arr_a;
@@ -460,10 +485,6 @@ int main(int argc, char **argv)
                 printf("from_numa_node=X to_numa_node=X cpu_numa_node=X numa_distance_dram_dram=X numa_distance_dram_cpu=X numa_distance_cpu_dram=X ");
 #endif
                 printout(te, mt);
-            }
-            if(showavg) {
-                printf("AVG\t");
-                printout(te_sum/nr_loops, mt);
             }
         }
     }
