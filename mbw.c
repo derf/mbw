@@ -98,9 +98,9 @@ void usage()
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
 #ifdef NUMA
+    printf("	-a <node>: allocate source array on NUMA node\n");
+    printf("	-b <node>: allocate target array on NUMA node\n");
     printf("	-c <node>: schedule task/threads on NUME node\n");
-    printf("	-c <node>: allocate source array on NUMA node\n");
-    printf("	-c <node>: allocate target array on NUMA node\n");
 #endif
     printf("(will then use two arrays, watch out for swapping)\n");
     printf("'Bandwidth' is amount of data copied over the time this operation took.\n");
@@ -141,10 +141,9 @@ void *thread_worker(void *arg)
     unsigned long long const dumb_start = thread_id * (arr_size / num_threads);
     unsigned long long const dumb_stop = (thread_id + 1) * (arr_size / num_threads);
 
-
     while (!done) {
         if (sem_wait(&start_sem) != 0) {
-            err(1, "sem_wait(start_sem");
+            err(1, "sem_wait(start_sem)");
         }
         if (done) {
             return NULL;
@@ -373,24 +372,6 @@ int main(int argc, char **argv)
 
     /* ------------------------------------------------------ */
 
-#ifdef MULTITHREADED
-    if (sem_init(&start_sem, 0, 0) != 0) {
-        err(1, "sem_init");
-    }
-    if (sem_init(&stop_sem, 0, 0) != 0) {
-        err(1, "sem_init");
-    }
-    if (sem_init(&sync_sem, 0, 0) != 0) {
-        err(1, "sem_init");
-    }
-    threads = calloc(num_threads, sizeof(pthread_t));
-    for (i=0; i < num_threads; i++) {
-        if (pthread_create(&threads[i], NULL, thread_worker, (void*)(unsigned long)i) != 0) {
-            err(1, "pthread_create");
-        }
-    }
-#endif
-
     long_size=sizeof(long); /* the size of long on this platform */
     arr_size=1024*1024/long_size*mt; /* how many longs then in one array? */
 
@@ -465,6 +446,24 @@ int main(int argc, char **argv)
     if(!quiet) {
         printf("Getting down to business... Doing %d runs per test.\n", nr_loops);
     }
+
+#ifdef MULTITHREADED
+    if (sem_init(&start_sem, 0, 0) != 0) {
+        err(1, "sem_init");
+    }
+    if (sem_init(&stop_sem, 0, 0) != 0) {
+        err(1, "sem_init");
+    }
+    if (sem_init(&sync_sem, 0, 0) != 0) {
+        err(1, "sem_init");
+    }
+    threads = calloc(num_threads, sizeof(pthread_t));
+    for (i=0; i < num_threads; i++) {
+        if (pthread_create(&threads[i], NULL, thread_worker, (void*)(unsigned long)i) != 0) {
+            err(1, "pthread_create");
+        }
+    }
+#endif
 
     /* run all tests requested, the proper number of times */
     for(test_type=0; test_type<MAX_TESTS; test_type++) {
