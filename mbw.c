@@ -271,7 +271,7 @@ void printout(double te, double mt)
             printf("e_method=MCBLOCK ");
             break;
     }
-    printf("| data_MiB=%f time_s=%f throughput_dram_dram_MiBps=%f\n", mt, te, mt/te);
+    printf("| data_MiB=%f time_s=%f throughput_MiBps=%f\n", mt, te, mt/te);
     return;
 }
 
@@ -472,16 +472,23 @@ int main(int argc, char **argv)
             for (i=0; nr_loops==0 || i<nr_loops; i++) {
                 te=worker();
                 te_sum+=te;
-                printf("[::] CPU transfer | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
+                if (test_type == TEST_MEMCPY) {
+                    printf("[:::] memcpy");
+                } else if (test_type == TEST_DUMB) {
+                    printf("[:::] copy");
+                } else if (test_type == TEST_MCBLOCK) {
+                    printf("[:::] mcblock");
+                }
+                printf(" | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
 #ifdef MULTITHREADED
                 printf("n_threads=%ld ", num_threads);
 #else
                 printf("n_threads=1 ");
 #endif
 #ifdef NUMA
-                printf("from_numa_node=%d to_numa_node=%d cpu_numa_node=%d numa_distance_dram_dram=%d numa_distance_dram_cpu=%d numa_distance_cpu_dram=%d ", numa_node_a, numa_node_b, numa_node_cpu, numa_distance(numa_node_a, numa_node_b), numa_distance(numa_node_a, numa_node_cpu), numa_distance(numa_node_cpu, numa_node_b));
+                printf("from_numa_node=%d to_numa_node=%d cpu_numa_node=%d numa_distance_ram_ram=%d numa_distance_ram_cpu=%d numa_distance_cpu_ram=%d ", numa_node_a, numa_node_b, numa_node_cpu, numa_distance(numa_node_a, numa_node_b), numa_distance(numa_node_a, numa_node_cpu), numa_distance(numa_node_cpu, numa_node_b));
 #else
-                printf("from_numa_node=X to_numa_node=X cpu_numa_node=X numa_distance_dram_dram=X numa_distance_dram_cpu=X numa_distance_cpu_dram=X ");
+                printf("from_numa_node=X to_numa_node=X cpu_numa_node=X numa_distance_ram_ram=X numa_distance_ram_cpu=X numa_distance_cpu_ram=X ");
 #endif
                 printout(te, mt);
             }
