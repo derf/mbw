@@ -473,11 +473,11 @@ int main(int argc, char **argv)
                 te=worker();
                 te_sum+=te;
                 if (test_type == TEST_MEMCPY) {
-                    printf("[:::] memcpy");
+                    printf("[::] memcpy");
                 } else if (test_type == TEST_DUMB) {
-                    printf("[:::] copy");
+                    printf("[::] copy");
                 } else if (test_type == TEST_MCBLOCK) {
-                    printf("[:::] mcblock");
+                    printf("[::] mcblock");
                 }
                 printf(" | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
 #ifdef MULTITHREADED
