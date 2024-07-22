@@ -1,12 +1,12 @@
 EXTRA_CFLAGS =
 EXTRA_LIBS =
 ifdef pthread
-	EXTRA_CFLAGS = -DMULTITHREADED -pthread
+	EXTRA_CFLAGS += -DMULTITHREADED -pthread
 endif
 
 ifdef numa
-	EXTRA_CFLAGS = -DNUMA
-	EXTRA_LIBS = -lnuma
+	EXTRA_CFLAGS += -DNUMA
+	EXTRA_LIBS += -lnuma
 endif
 
 mbw: mbw.c
