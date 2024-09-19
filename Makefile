@@ -10,7 +10,7 @@ ifdef numa
 endif
 
 mbw: mbw.c
-	gcc -Wall -Wextra -pedantic -O2 ${EXTRA_CFLAGS} -o mbw mbw.c ${EXTRA_LIBS}
+	gcc -Wall -Wextra -pedantic -O3 -march=native ${EXTRA_CFLAGS} -o mbw mbw.c ${EXTRA_LIBS}
 
 .PHONY: clean
 clean:
