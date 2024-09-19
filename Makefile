@@ -9,6 +9,10 @@ ifdef numa
 	EXTRA_LIBS += -lnuma
 endif
 
+ifdef avx512
+	EXTRA_CFLAGS += -DHAVE_AVX512
+endif
+
 mbw: mbw.c
 	gcc -Wall -Wextra -pedantic -O3 -march=native ${EXTRA_CFLAGS} -o mbw mbw.c ${EXTRA_LIBS}
 
