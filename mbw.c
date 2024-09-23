@@ -32,7 +32,7 @@
 #define DEFAULT_NR_LOOPS 40
 
 /* we have 4 tests at the moment */
-#define MAX_TESTS 4
+#define MAX_TESTS 5
 
 /* default block size for test 2, in bytes */
 #define DEFAULT_BLOCK_SIZE 262144
@@ -42,6 +42,7 @@
 #define TEST_DUMB 1
 #define TEST_MCBLOCK 2
 #define TEST_AVX512 3
+#define TEST_READ_DUMB 4
 
 /* version number */
 #define VERSION "1.5+smaug"
@@ -345,6 +346,7 @@ void usage()
 #ifdef HAVE_AVX512
     printf("	-t%d: AVX512 copy test\n", TEST_AVX512);
 #endif
+    printf("	-t%d: dumbp read test\n", TEST_READ_DUMB);
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
 #ifdef NUMA
@@ -421,6 +423,12 @@ void *thread_worker(void *arg)
         } else if(test_type==TEST_AVX512) {
             rte_memcpy(arr_b, arr_a, array_bytes);
 #endif // HAVE_AVX512
+        } else if(test_type==TEST_READ_DUMB) {
+            long tmp = 0;
+            for(t=dumb_start; t<dumb_stop; t++) {
+                tmp ^= arr_a[t];
+            }
+            arr_b[dumb_stop-1] = tmp;
         }
         if (sem_post(&stop_sem) != 0) {
             err(1, "sem_post(stop_sem)");
@@ -505,6 +513,12 @@ double worker()
         rte_memcpy(arr_b, arr_a, array_bytes);
         clock_gettime(CLOCK_MONOTONIC, &endtime);
 #endif // HAVE_AVX512
+    } else if(test_type==TEST_READ_DUMB) {
+        long tmp = 0;
+        for(t=0; t<arr_size; t++) {
+            tmp ^= arr_a[t];
+        }
+        arr_b[arr_size-1] = tmp;
     }
 #endif // MULTITHREADED
 
@@ -612,13 +626,13 @@ int main(int argc, char **argv)
     }
 
     /* default is to run all tests if no specific tests were requested */
-    if( (tests[0]+tests[1]+tests[2]+tests[3]) == 0) {
+    if( (tests[0]+tests[1]+tests[2]+tests[3]+tests[4]) == 0) {
         tests[0]=1;
         tests[1]=1;
         tests[2]=1;
     }
 
-    if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]) != 1) ) {
+    if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]) != 1) ) {
         printf("Error: nr_loops can be zero if only one test selected!\n");
         exit(1);
     }
@@ -745,6 +759,8 @@ int main(int argc, char **argv)
                     printf("[::] mcblock");
                 } else if (test_type == TEST_AVX512) {
                     printf("[::] copy-avx512");
+                } else if (test_type == TEST_READ_DUMB) {
+                    printf("[::] read");
                 }
                 printf(" | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
 #ifdef MULTITHREADED
