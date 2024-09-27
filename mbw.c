@@ -515,9 +515,11 @@ double worker()
 #endif // HAVE_AVX512
     } else if(test_type==TEST_READ_DUMB) {
         long tmp = 0;
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
         for(t=0; t<arr_size; t++) {
             tmp ^= arr_a[t];
         }
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
         arr_b[arr_size-1] = tmp;
     }
 #endif // MULTITHREADED
