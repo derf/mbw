@@ -39,10 +39,10 @@
 
 /* test types */
 #define TEST_MEMCPY 0
-#define TEST_DUMB 1
+#define TEST_PLAIN 1
 #define TEST_MCBLOCK 2
 #define TEST_AVX512 3
-#define TEST_READ_DUMB 4
+#define TEST_READ_PLAIN 4
 
 /* version number */
 #define VERSION "1.5+smaug"
@@ -341,12 +341,12 @@ void usage()
     printf("	-n: number of runs per test (0 to run forever)\n");
     printf("	-a: Don't display average\n");
     printf("	-t%d: memcpy test\n", TEST_MEMCPY);
-    printf("	-t%d: dumb (b[i]=a[i] style) test\n", TEST_DUMB);
+    printf("	-t%d: plain (b[i]=a[i] style) test\n", TEST_PLAIN);
     printf("	-t%d: memcpy test with fixed block size\n", TEST_MCBLOCK);
 #ifdef HAVE_AVX512
     printf("	-t%d: AVX512 copy test\n", TEST_AVX512);
 #endif
-    printf("	-t%d: dumbp read test\n", TEST_READ_DUMB);
+    printf("	-t%d: plain read test\n", TEST_READ_PLAIN);
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
 #ifdef NUMA
@@ -394,8 +394,8 @@ void *thread_worker(void *arg)
     unsigned int long_size=sizeof(long);
     unsigned long long array_bytes=arr_size*long_size;
     unsigned long long t;
-    unsigned long long const dumb_start = thread_id * (arr_size / num_threads);
-    unsigned long long const dumb_stop = (thread_id + 1) * (arr_size / num_threads);
+    unsigned long long const plain_start = thread_id * (arr_size / num_threads);
+    unsigned long long const plain_stop = (thread_id + 1) * (arr_size / num_threads);
 
     while (!done) {
         if (sem_wait(&start_sem) != 0) {
@@ -415,20 +415,20 @@ void *thread_worker(void *arg)
             if(t) {
                 dst=(char *) memcpy(dst, src, t) + t;
             }
-        } else if(test_type==TEST_DUMB) { /* dumb test */
-            for(t=dumb_start; t<dumb_stop; t++) {
+        } else if(test_type==TEST_PLAIN) { /* plain test */
+            for(t=plain_start; t<plain_stop; t++) {
                 arr_b[t]=arr_a[t];
             }
 #ifdef HAVE_AVX512
         } else if(test_type==TEST_AVX512) {
             rte_memcpy(arr_b, arr_a, array_bytes);
 #endif // HAVE_AVX512
-        } else if(test_type==TEST_READ_DUMB) {
+        } else if(test_type==TEST_READ_PLAIN) {
             long tmp = 0;
-            for(t=dumb_start; t<dumb_stop; t++) {
+            for(t=plain_start; t<plain_stop; t++) {
                 tmp ^= arr_a[t];
             }
-            arr_b[dumb_stop-1] = tmp;
+            arr_b[plain_stop-1] = tmp;
         }
         if (sem_post(&stop_sem) != 0) {
             err(1, "sem_post(stop_sem)");
@@ -465,7 +465,7 @@ void sync_threads()
 /* actual benchmark */
 /* arr_size: number of type 'long' elements in test arrays
  * long_size: sizeof(long) cached
- * test_type: 0=use memcpy, 1=use dumb copy loop (whatever GCC thinks best)
+ * test_type: 0=use memcpy, 1=use plain copy loop (whatever GCC thinks best)
  *
  * return value: elapsed time in seconds
  */
@@ -501,7 +501,7 @@ double worker()
             dst=(char *) memcpy(dst, src, t) + t;
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
-    } else if(test_type==TEST_DUMB) { /* dumb test */
+    } else if(test_type==TEST_PLAIN) { /* plain test */
         clock_gettime(CLOCK_MONOTONIC, &starttime);
         for(t=0; t<arr_size; t++) {
             arr_b[t]=arr_a[t];
@@ -513,7 +513,7 @@ double worker()
         rte_memcpy(arr_b, arr_a, array_bytes);
         clock_gettime(CLOCK_MONOTONIC, &endtime);
 #endif // HAVE_AVX512
-    } else if(test_type==TEST_READ_DUMB) {
+    } else if(test_type==TEST_READ_PLAIN) {
         long tmp = 0;
         clock_gettime(CLOCK_MONOTONIC, &starttime);
         for(t=0; t<arr_size; t++) {
@@ -544,8 +544,8 @@ void printout(double te, double mt)
         case TEST_MEMCPY:
             printf("e_method=MEMCPY ");
             break;
-        case TEST_DUMB:
-            printf("e_method=DUMB ");
+        case TEST_PLAIN:
+            printf("e_method=PLAIN ");
             break;
         case TEST_MCBLOCK:
             printf("e_method=MCBLOCK ");
@@ -755,13 +755,13 @@ int main(int argc, char **argv)
                 te_sum+=te;
                 if (test_type == TEST_MEMCPY) {
                     printf("[::] memcpy");
-                } else if (test_type == TEST_DUMB) {
+                } else if (test_type == TEST_PLAIN) {
                     printf("[::] copy");
                 } else if (test_type == TEST_MCBLOCK) {
                     printf("[::] mcblock");
                 } else if (test_type == TEST_AVX512) {
                     printf("[::] copy-avx512");
-                } else if (test_type == TEST_READ_DUMB) {
+                } else if (test_type == TEST_READ_PLAIN) {
                     printf("[::] read");
                 }
                 printf(" | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
