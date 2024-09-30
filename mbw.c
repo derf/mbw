@@ -31,9 +31,6 @@
 /* how many runs to average by default */
 #define DEFAULT_NR_LOOPS 40
 
-/* we have 4 tests at the moment */
-#define MAX_TESTS 5
-
 /* default block size for test 2, in bytes */
 #define DEFAULT_BLOCK_SIZE 262144
 
@@ -43,6 +40,8 @@
 #define TEST_MCBLOCK 2
 #define TEST_AVX512 3
 #define TEST_READ_PLAIN 4
+#define TEST_WRITE_PLAIN 5
+#define MAX_TESTS 6
 
 /* version number */
 #define VERSION "1.5+smaug"
@@ -347,6 +346,7 @@ void usage()
     printf("	-t%d: AVX512 copy test\n", TEST_AVX512);
 #endif
     printf("	-t%d: plain read test\n", TEST_READ_PLAIN);
+    printf("	-t%d: plain write test\n", TEST_WRITE_PLAIN);
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
 #ifdef NUMA
@@ -429,6 +429,11 @@ void *thread_worker(void *arg)
                 tmp ^= arr_a[t];
             }
             arr_b[plain_stop-1] = tmp;
+        } else if(test_type==TEST_WRITE_PLAIN) {
+            long tmp = 0;
+            for(t=plain_start; t<plain_stop; t++) {
+                arr_b[t] = ++tmp;
+            }
         }
         if (sem_post(&stop_sem) != 0) {
             err(1, "sem_post(stop_sem)");
@@ -521,6 +526,13 @@ double worker()
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
         arr_b[arr_size-1] = tmp;
+    } else if(test_type==TEST_WRITE_PLAIN) {
+        long tmp = 0;
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
+        for(t=0; t<arr_size; t++) {
+            arr_b[t] = ++tmp;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
     }
 #endif // MULTITHREADED
 
@@ -628,13 +640,13 @@ int main(int argc, char **argv)
     }
 
     /* default is to run all tests if no specific tests were requested */
-    if( (tests[0]+tests[1]+tests[2]+tests[3]+tests[4]) == 0) {
+    if( (tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]) == 0) {
         tests[0]=1;
         tests[1]=1;
         tests[2]=1;
     }
 
-    if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]) != 1) ) {
+    if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]) != 1) ) {
         printf("Error: nr_loops can be zero if only one test selected!\n");
         exit(1);
     }
@@ -763,6 +775,8 @@ int main(int argc, char **argv)
                     printf("[::] copy-avx512");
                 } else if (test_type == TEST_READ_PLAIN) {
                     printf("[::] read");
+                } else if (test_type == TEST_WRITE_PLAIN) {
+                    printf("[::] write");
                 }
                 printf(" | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
 #ifdef MULTITHREADED
