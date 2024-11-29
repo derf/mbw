@@ -639,7 +639,14 @@ int main(int argc, char **argv)
         }
     }
 
-    /* default is to run all tests if no specific tests were requested */
+#ifndef HAVE_AVX512
+    if (tests[TEST_AVX512]) {
+        printf("Error: AVX512 memcpy requested, but this mbw build has been compiled without AVX512 support\n");
+        exit(1);
+    }
+#endif
+
+    /* default is to run most tests if no specific tests were requested */
     if( (tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]) == 0) {
         tests[0]=1;
         tests[1]=1;
