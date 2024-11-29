@@ -428,7 +428,7 @@ void *thread_worker(void *arg)
             for(t=plain_start; t<plain_stop; t++) {
                 tmp ^= arr_a[t];
             }
-            arr_b[plain_stop-1] = tmp;
+            arr_a[plain_stop-1] = tmp;
         } else if(test_type==TEST_WRITE_PLAIN) {
             long tmp = 0;
             for(t=plain_start; t<plain_stop; t++) {
@@ -525,7 +525,7 @@ double worker()
             tmp ^= arr_a[t];
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
-        arr_b[arr_size-1] = tmp;
+        arr_a[arr_size-1] = tmp;
     } else if(test_type==TEST_WRITE_PLAIN) {
         long tmp = 0;
         clock_gettime(CLOCK_MONOTONIC, &starttime);
@@ -682,7 +682,6 @@ int main(int argc, char **argv)
 
     if(!quiet) {
         printf("Long uses %d bytes. ", long_size);
-        printf("Allocating 2*%lld elements = %lld bytes of memory.\n", arr_size, 2*arr_size*long_size);
         if(tests[2]) {
             printf("Using %lld bytes as blocks for memcpy block copy test.\n", block_size);
         }
@@ -696,7 +695,12 @@ int main(int argc, char **argv)
         numa_free_nodemask(bitmask_a);
     }
 #endif
-    arr_a=make_array();
+    if (tests[TEST_MEMCPY]+tests[TEST_PLAIN]+tests[TEST_MCBLOCK]+tests[TEST_AVX512]+tests[TEST_READ_PLAIN]) {
+        if (!quiet) {
+            printf("Allocating %lld elements = %lld MiB of input memory.\n", arr_size, arr_size*long_size / 1024 / 1024);
+        }
+        arr_a=make_array();
+    }
 
 #ifdef NUMA
     if (bitmask_b) {
@@ -704,7 +708,12 @@ int main(int argc, char **argv)
         numa_free_nodemask(bitmask_b);
     }
 #endif
-    arr_b=make_array();
+    if (tests[TEST_MEMCPY]+tests[TEST_PLAIN]+tests[TEST_MCBLOCK]+tests[TEST_AVX512]+tests[TEST_WRITE_PLAIN]) {
+        if (!quiet) {
+            printf("Allocating %lld elements = %lld MiB of output memory.\n", arr_size, arr_size*long_size / 1024 / 1024);
+        }
+        arr_b=make_array();
+    }
 
 #ifdef NUMA
     numa_set_membind(bitmask_all);
