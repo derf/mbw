@@ -41,7 +41,9 @@
 #define TEST_AVX512 3
 #define TEST_READ_PLAIN 4
 #define TEST_WRITE_PLAIN 5
-#define MAX_TESTS 6
+#define TEST_READ_AVX512 6
+#define TEST_WRITE_AVX512 7
+#define MAX_TESTS 8
 
 /* version number */
 #define VERSION "1.5+smaug"
@@ -345,8 +347,12 @@ void usage()
 #ifdef HAVE_AVX512
     printf("	-t%d: AVX512 copy test\n", TEST_AVX512);
 #endif
-    printf("	-t%d: plain read test\n", TEST_READ_PLAIN);
-    printf("	-t%d: plain write test\n", TEST_WRITE_PLAIN);
+    printf("	-t%d: plain read test (sum)\n", TEST_READ_PLAIN);
+    printf("	-t%d: plain write test (const fill)\n", TEST_WRITE_PLAIN);
+#ifdef HAVE_AVX512
+    printf("	-t%d: AVX512 read test (sum)\n", TEST_READ_AVX512);
+    printf("	-t%d: AVX512 write test (const fill)\n", TEST_WRITE_AVX512);
+#endif
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
 #ifdef NUMA
@@ -426,15 +432,37 @@ void *thread_worker(void *arg)
         } else if(test_type==TEST_READ_PLAIN) {
             long tmp = 0;
             for(t=plain_start; t<plain_stop; t++) {
-                tmp ^= arr_a[t];
+                tmp += arr_a[t];
             }
             arr_a[plain_stop-1] = tmp;
         } else if(test_type==TEST_WRITE_PLAIN) {
-            long tmp = 0;
+            long tmp = 1374181804651713298;
             for(t=plain_start; t<plain_stop; t++) {
-                arr_b[t] = ++tmp;
+                arr_b[t] = tmp;
+            }
+#ifdef HAVE_AVX512
+        } else if(test_type==TEST_READ_AVX512) {
+            __m512i zmm0 = _mm512_setzero_epi32();
+            __m512i zmm1;
+            uint8_t *src = (uint8_t*)(arr_a + (thread_id * (arr_size / num_threads)));
+            const uint8_t *end = src + (arr_size / num_threads) * sizeof(long);
+            while (src < end) {
+                zmm1 = _mm512_load_si512((const void *)src);
+                zmm0 = _mm512_add_epi64(zmm0, zmm1);
+                src += 512;
+            }
+            arr_a[plain_stop-1] = (long)_mm512_reduce_add_epi64(zmm0);
+        } else if(test_type==TEST_WRITE_AVX512) {
+            const uint8_t *src = (uint8_t*)(arr_b + (thread_id * (arr_size / num_threads)));
+            uint8_t *dst = (uint8_t*)(arr_b + (thread_id * (arr_size / num_threads)));
+            const uint8_t *end = dst + (arr_size / num_threads) * sizeof(long);
+            __m512i zmm0 = _mm512_load_si512(src);
+            while (dst < end) {
+                _mm512_store_si512((void*)(dst), zmm0);
+                dst += 512;
             }
         }
+#endif // HAVE_AVX512
         if (sem_post(&stop_sem) != 0) {
             err(1, "sem_post(stop_sem)");
         }
@@ -533,8 +561,34 @@ double worker()
             arr_b[t] = ++tmp;
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
+#ifdef HAVE_AVX512
+    } else if(test_type==TEST_READ_AVX512) {
+        __m512i zmm0 = _mm512_setzero_epi32();
+        __m512i zmm1;
+        uint8_t *src = (uint8_t*)arr_a;
+        const uint8_t *end = src + arr_size * sizeof(long);
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
+        while (src < end) {
+            zmm1 = _mm512_load_si512((const void *)src);
+            zmm0 = _mm512_add_epi64(zmm0, zmm1);
+            src += 512;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
+        arr_a[arr_size-1] = (long)_mm512_reduce_add_epi64(zmm0);
+    } else if(test_type==TEST_WRITE_AVX512) {
+        const uint8_t *src = (uint8_t*)arr_b;
+        uint8_t *dst = (uint8_t*)arr_b;
+        const uint8_t *end = dst + arr_size * sizeof(long);
+        __m512i zmm0 = _mm512_load_si512(src);
+        clock_gettime(CLOCK_MONOTONIC, &starttime);
+        while (dst < end) {
+            _mm512_store_si512((void*)(dst), zmm0);
+            dst += 512;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
+#endif // HAVE_AVX512
     }
-#endif // MULTITHREADED
+#endif // !MULTITHREADED
 
     te=((double)(endtime.tv_sec*1000000000-starttime.tv_sec*1000000000+endtime.tv_nsec-starttime.tv_nsec))/1000000000;
 
@@ -590,6 +644,10 @@ int main(int argc, char **argv)
     tests[1]=0;
     tests[2]=0;
     tests[3]=0;
+    tests[4]=0;
+    tests[5]=0;
+    tests[6]=0;
+    tests[7]=0;
 
     while((o=getopt(argc, argv, "ha:b:c:qn:N:t:B:")) != EOF) {
         switch(o) {
@@ -644,18 +702,28 @@ int main(int argc, char **argv)
         printf("Error: AVX512 memcpy requested, but this mbw build has been compiled without AVX512 support\n");
         exit(1);
     }
+    if (tests[TEST_READ_AVX512]) {
+        printf("Error: AVX512 read requested, but this mbw build has been compiled without AVX512 support\n");
+        exit(1);
+    }
+    if (tests[TEST_WRITE_AVX512]) {
+        printf("Error: AVX512 write requested, but this mbw build has been compiled without AVX512 support\n");
+        exit(1);
+    }
 #endif
 
     /* default is to run most tests if no specific tests were requested */
-    if( (tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]) == 0) {
+    if( (tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]+tests[6]+tests[7]) == 0) {
         tests[0]=1;
         tests[1]=1;
         tests[2]=1;
         tests[4]=1;
         tests[5]=1;
+        tests[6]=1;
+        tests[7]=1;
     }
 
-    if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]) != 1) ) {
+    if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]+tests[6]+tests[7]) != 1) ) {
         printf("Error: nr_loops can be zero if only one test selected!\n");
         exit(1);
     }
@@ -697,7 +765,7 @@ int main(int argc, char **argv)
         numa_free_nodemask(bitmask_a);
     }
 #endif
-    if (tests[TEST_MEMCPY]+tests[TEST_PLAIN]+tests[TEST_MCBLOCK]+tests[TEST_AVX512]+tests[TEST_READ_PLAIN]) {
+    if (tests[TEST_MEMCPY]+tests[TEST_PLAIN]+tests[TEST_MCBLOCK]+tests[TEST_AVX512]+tests[TEST_READ_PLAIN]+tests[TEST_READ_AVX512]) {
         if (!quiet) {
             printf("Allocating %lld elements = %lld MiB of input memory.\n", arr_size, arr_size*long_size / 1024 / 1024);
         }
@@ -710,7 +778,7 @@ int main(int argc, char **argv)
         numa_free_nodemask(bitmask_b);
     }
 #endif
-    if (tests[TEST_MEMCPY]+tests[TEST_PLAIN]+tests[TEST_MCBLOCK]+tests[TEST_AVX512]+tests[TEST_WRITE_PLAIN]) {
+    if (tests[TEST_MEMCPY]+tests[TEST_PLAIN]+tests[TEST_MCBLOCK]+tests[TEST_AVX512]+tests[TEST_WRITE_PLAIN]+tests[TEST_WRITE_AVX512]) {
         if (!quiet) {
             printf("Allocating %lld elements = %lld MiB of output memory.\n", arr_size, arr_size*long_size / 1024 / 1024);
         }
@@ -728,7 +796,7 @@ int main(int argc, char **argv)
         perror("move_pages(arr_a)");
     }
     else if (mp_status[0] < 0) {
-        printf("move_pages error: %d", mp_status[0]);
+        printf("move_pages error: %d\n", mp_status[0]);
     }
     else {
         numa_node_a = mp_status[0];
@@ -739,7 +807,7 @@ int main(int argc, char **argv)
         perror("move_pages(arr_b)");
     }
     else if (mp_status[0] < 0) {
-        printf("move_pages error: %d", mp_status[0]);
+        printf("move_pages error: %d\n", mp_status[0]);
     }
     else {
         numa_node_b = mp_status[0];
@@ -795,6 +863,10 @@ int main(int argc, char **argv)
                     printf("[::] read");
                 } else if (test_type == TEST_WRITE_PLAIN) {
                     printf("[::] write");
+                } else if (test_type == TEST_READ_AVX512) {
+                    printf("[::] read-avx512");
+                } else if (test_type == TEST_WRITE_AVX512) {
+                    printf("[::] write-avx512");
                 }
                 printf(" | block_size_B=%llu array_size_B=%llu ", block_size, arr_size*long_size);
 #ifdef MULTITHREADED
