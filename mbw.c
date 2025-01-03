@@ -76,7 +76,8 @@ pthread_t *threads;
 sem_t start_sem, stop_sem, sync_sem;
 #endif
 
-long *arr_a, *arr_b; /* the two arrays to be copied from/to */
+long *arr_a = NULL;
+long *arr_b = NULL; /* the two arrays to be copied from/to */
 unsigned long long arr_size=0; /* array size (elements in array) */
 unsigned int test_type;
 /* fixed memcpy block size for -t2 */
@@ -791,26 +792,30 @@ int main(int argc, char **argv)
 #endif
 
 #ifdef NUMA
-    mp_pages[0] = arr_a;
-    if (move_pages(0, 1, mp_pages, NULL, mp_status, 0) == -1) {
-        perror("move_pages(arr_a)");
-    }
-    else if (mp_status[0] < 0) {
-        printf("move_pages error: %d\n", mp_status[0]);
-    }
-    else {
-        numa_node_a = mp_status[0];
+    if (arr_a != NULL) {
+        mp_pages[0] = arr_a;
+        if (move_pages(0, 1, mp_pages, NULL, mp_status, 0) == -1) {
+            perror("move_pages(arr_a)");
+        }
+        else if (mp_status[0] < 0) {
+            printf("move_pages(arr_a) error: %d\n", mp_status[0]);
+        }
+        else {
+            numa_node_a = mp_status[0];
+        }
     }
 
-    mp_pages[0] = arr_b;
-    if (move_pages(0, 1, mp_pages, NULL, mp_status, 0) == -1) {
-        perror("move_pages(arr_b)");
-    }
-    else if (mp_status[0] < 0) {
-        printf("move_pages error: %d\n", mp_status[0]);
-    }
-    else {
-        numa_node_b = mp_status[0];
+    if (arr_b != NULL) {
+        mp_pages[0] = arr_b;
+        if (move_pages(0, 1, mp_pages, NULL, mp_status, 0) == -1) {
+            perror("move_pages(arr_b)");
+        }
+        else if (mp_status[0] < 0) {
+            printf("move_pages(arr_b) error: %d\n", mp_status[0]);
+        }
+        else {
+            numa_node_b = mp_status[0];
+        }
     }
 
     if (numa_node_cpu != -1) {
