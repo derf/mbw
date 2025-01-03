@@ -192,27 +192,27 @@ static inline void
 rte_mov512blocks(uint8_t *dst, const uint8_t *src, size_t n)
 {
 	__m512i zmm0, zmm1, zmm2, zmm3, zmm4, zmm5, zmm6, zmm7;
+	const uint8_t *end = src + n;
 
-	while (n >= 512) {
-		zmm0 = _mm512_loadu_si512((const void *)(src + 0 * 64));
-		n -= 512;
-		zmm1 = _mm512_loadu_si512((const void *)(src + 1 * 64));
-		zmm2 = _mm512_loadu_si512((const void *)(src + 2 * 64));
-		zmm3 = _mm512_loadu_si512((const void *)(src + 3 * 64));
-		zmm4 = _mm512_loadu_si512((const void *)(src + 4 * 64));
-		zmm5 = _mm512_loadu_si512((const void *)(src + 5 * 64));
-		zmm6 = _mm512_loadu_si512((const void *)(src + 6 * 64));
-		zmm7 = _mm512_loadu_si512((const void *)(src + 7 * 64));
-		src = src + 512;
-		_mm512_storeu_si512((void *)(dst + 0 * 64), zmm0);
-		_mm512_storeu_si512((void *)(dst + 1 * 64), zmm1);
-		_mm512_storeu_si512((void *)(dst + 2 * 64), zmm2);
-		_mm512_storeu_si512((void *)(dst + 3 * 64), zmm3);
-		_mm512_storeu_si512((void *)(dst + 4 * 64), zmm4);
-		_mm512_storeu_si512((void *)(dst + 5 * 64), zmm5);
-		_mm512_storeu_si512((void *)(dst + 6 * 64), zmm6);
-		_mm512_storeu_si512((void *)(dst + 7 * 64), zmm7);
-		dst = dst + 512;
+	while (src < end) {
+		zmm0 = _mm512_load_si512((const void *)(src + 0 * 64));
+		zmm1 = _mm512_load_si512((const void *)(src + 1 * 64));
+		zmm2 = _mm512_load_si512((const void *)(src + 2 * 64));
+		zmm3 = _mm512_load_si512((const void *)(src + 3 * 64));
+		zmm4 = _mm512_load_si512((const void *)(src + 4 * 64));
+		zmm5 = _mm512_load_si512((const void *)(src + 5 * 64));
+		zmm6 = _mm512_load_si512((const void *)(src + 6 * 64));
+		zmm7 = _mm512_load_si512((const void *)(src + 7 * 64));
+		_mm512_store_si512((void *)(dst + 0 * 64), zmm0);
+		_mm512_store_si512((void *)(dst + 1 * 64), zmm1);
+		_mm512_store_si512((void *)(dst + 2 * 64), zmm2);
+		_mm512_store_si512((void *)(dst + 3 * 64), zmm3);
+		_mm512_store_si512((void *)(dst + 4 * 64), zmm4);
+		_mm512_store_si512((void *)(dst + 5 * 64), zmm5);
+		_mm512_store_si512((void *)(dst + 6 * 64), zmm6);
+		_mm512_store_si512((void *)(dst + 7 * 64), zmm7);
+		src += 512;
+		dst += 512;
 	}
 }
 
@@ -445,7 +445,7 @@ void *thread_worker(void *arg)
         } else if(test_type==TEST_READ_AVX512) {
             __m512i zmm0 = _mm512_setzero_epi32();
             __m512i zmm1;
-            uint8_t *src = (uint8_t*)(arr_a + (thread_id * (arr_size / num_threads)));
+            uint8_t *src = (uint8_t*)(((uintptr_t)(arr_a + (thread_id * (arr_size / num_threads))) >> 9) << 9);
             const uint8_t *end = src + (arr_size / num_threads) * sizeof(long);
             while (src < end) {
                 zmm1 = _mm512_load_si512((const void *)src);
@@ -454,8 +454,8 @@ void *thread_worker(void *arg)
             }
             arr_a[plain_stop-1] = (long)_mm512_reduce_add_epi64(zmm0);
         } else if(test_type==TEST_WRITE_AVX512) {
-            const uint8_t *src = (uint8_t*)(arr_b + (thread_id * (arr_size / num_threads)));
-            uint8_t *dst = (uint8_t*)(arr_b + (thread_id * (arr_size / num_threads)));
+            const uint8_t *src = (uint8_t*)(((uintptr_t)(arr_b + (thread_id * (arr_size / num_threads))) >> 9) << 9);
+            uint8_t *dst = (uint8_t*)(((uintptr_t)(arr_b + (thread_id * (arr_size / num_threads))) >> 9) << 9);
             const uint8_t *end = dst + (arr_size / num_threads) * sizeof(long);
             __m512i zmm0 = _mm512_load_si512(src);
             while (dst < end) {
