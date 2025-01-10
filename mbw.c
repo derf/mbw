@@ -462,8 +462,8 @@ void *thread_worker(void *arg)
                 _mm512_store_si512((void*)(dst), zmm0);
                 dst += 512;
             }
-        }
 #endif // HAVE_AVX512
+        }
         if (sem_post(&stop_sem) != 0) {
             err(1, "sem_post(stop_sem)");
         }
