@@ -450,7 +450,7 @@ void *thread_worker(void *arg)
             while (src < end) {
                 zmm1 = _mm512_load_si512((const void *)src);
                 zmm0 = _mm512_add_epi64(zmm0, zmm1);
-                src += 512;
+                src += 64;
             }
             arr_a[plain_stop-1] = (long)_mm512_reduce_add_epi64(zmm0);
         } else if(test_type==TEST_WRITE_AVX512) {
@@ -460,7 +460,7 @@ void *thread_worker(void *arg)
             __m512i zmm0 = _mm512_load_si512(src);
             while (dst < end) {
                 _mm512_store_si512((void*)(dst), zmm0);
-                dst += 512;
+                dst += 64;
             }
 #endif // HAVE_AVX512
         }
@@ -572,7 +572,7 @@ double worker()
         while (src < end) {
             zmm1 = _mm512_load_si512((const void *)src);
             zmm0 = _mm512_add_epi64(zmm0, zmm1);
-            src += 512;
+            src += 64;
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
         arr_a[arr_size-1] = (long)_mm512_reduce_add_epi64(zmm0);
@@ -584,7 +584,7 @@ double worker()
         clock_gettime(CLOCK_MONOTONIC, &starttime);
         while (dst < end) {
             _mm512_store_si512((void*)(dst), zmm0);
-            dst += 512;
+            dst += 64;
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
 #endif // HAVE_AVX512
