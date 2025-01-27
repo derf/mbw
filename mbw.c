@@ -86,6 +86,7 @@ unsigned long long block_size=DEFAULT_BLOCK_SIZE;
 
 int sanity_check = 0;
 long arr_a_sum = 0;
+long *partial_sum;
 
 #ifdef NUMA
 void* mp_pages[1];
@@ -446,9 +447,8 @@ void *thread_worker(void *arg)
             for(t=plain_start; t<plain_stop; t++) {
                 tmp += arr_a[t];
             }
-            arr_a[plain_stop-1] = tmp;
             if (sanity_check) {
-                assert(tmp == arr_a_sum);
+                partial_sum[thread_id] = tmp;
             }
         } else if(test_type==TEST_WRITE_PLAIN) {
             long tmp = 1374181804651713298;
@@ -461,12 +461,18 @@ void *thread_worker(void *arg)
             __m512i zmm1;
             uint8_t *src = (uint8_t*)(((uintptr_t)(arr_a + (thread_id * (arr_size / num_threads))) >> 9) << 9);
             const uint8_t *end = src + (arr_size / num_threads) * sizeof(long);
+            long tmp = 0;
             while (src < end) {
                 zmm1 = _mm512_load_si512((const void *)src);
                 zmm0 = _mm512_add_epi64(zmm0, zmm1);
                 src += 64;
             }
-            arr_a[plain_stop-1] = (long)_mm512_reduce_add_epi64(zmm0);
+            tmp = (long)_mm512_reduce_add_epi64(zmm0);
+            if (sanity_check) {
+                assert((plain_start & 0x0000000000000007) == 0);
+                assert((plain_stop & 0x0000000000000007) == 0);
+                partial_sum[thread_id] = tmp;
+            }
         } else if(test_type==TEST_WRITE_AVX512) {
             const uint8_t *src = (uint8_t*)(((uintptr_t)(arr_b + (thread_id * (arr_size / num_threads))) >> 9) << 9);
             uint8_t *dst = (uint8_t*)(((uintptr_t)(arr_b + (thread_id * (arr_size / num_threads))) >> 9) << 9);
@@ -595,8 +601,8 @@ double worker()
         tmp = (long)_mm512_reduce_add_epi64(zmm0);
         if (sanity_check) {
             if (tmp != arr_a_sum) {
-                printf("expected:       arr_a_sum == %12ld (%016lx)\n", arr_a_sum, arr_a_sum);
-                printf("output: arr_a[arr_size-1] == %12ld (%016lx)\n", tmp, tmp);
+                printf("expected: arr_a_sum == %12ld (%016lx)\n", arr_a_sum, arr_a_sum);
+                printf("output:  reduce_add == %12ld (%016lx)\n", tmp, tmp);
             }
             assert(tmp == arr_a_sum);
         }
@@ -869,7 +875,13 @@ int main(int argc, char **argv)
         err(1, "sem_init");
     }
     threads = calloc(num_threads, sizeof(pthread_t));
+    if (sanity_check) {
+        partial_sum = calloc(num_threads, sizeof(long));
+    }
     for (i=0; i < num_threads; i++) {
+        if (sanity_check) {
+            partial_sum[i] = 0;
+        }
         if (pthread_create(&threads[i], NULL, thread_worker, (void*)(unsigned long)i) != 0) {
             err(1, "pthread_create");
         }
@@ -923,6 +935,17 @@ int main(int argc, char **argv)
         if (pthread_join(threads[i], NULL) != 0) {
             err(1, "pthread_join");
         }
+    }
+    if (sanity_check && (tests[TEST_READ_PLAIN] || tests[TEST_READ_AVX512])) {
+        long tmp = 0;
+        for (i=0; i < num_threads; i++) {
+            tmp += partial_sum[i];
+        }
+        if (tmp != arr_a_sum) {
+            printf("expected:  arr_a_sum == %12ld (%016lx)\n", arr_a_sum, arr_a_sum);
+            printf("output: sum(partial) == %12ld (%016lx)\n", tmp, tmp);
+        }
+        assert(tmp == arr_a_sum);
     }
 #endif
 
