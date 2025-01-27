@@ -459,8 +459,8 @@ void *thread_worker(void *arg)
         } else if(test_type==TEST_READ_AVX512) {
             __m512i zmm0 = _mm512_setzero_epi32();
             __m512i zmm1;
-            uint8_t *src = (uint8_t*)(((uintptr_t)(arr_a + (thread_id * (arr_size / num_threads))) >> 9) << 9);
-            const uint8_t *end = src + (arr_size / num_threads) * sizeof(long);
+            uint8_t *src = (uint8_t*)(arr_a + plain_start);
+            const uint8_t *end = (uint8_t*)(arr_a + plain_stop);
             long tmp = 0;
             while (src < end) {
                 zmm1 = _mm512_load_si512((const void *)src);
@@ -474,9 +474,9 @@ void *thread_worker(void *arg)
                 partial_sum[thread_id] = tmp;
             }
         } else if(test_type==TEST_WRITE_AVX512) {
-            const uint8_t *src = (uint8_t*)(((uintptr_t)(arr_b + (thread_id * (arr_size / num_threads))) >> 9) << 9);
-            uint8_t *dst = (uint8_t*)(((uintptr_t)(arr_b + (thread_id * (arr_size / num_threads))) >> 9) << 9);
-            const uint8_t *end = dst + (arr_size / num_threads) * sizeof(long);
+            uint8_t *src = (uint8_t*)(arr_a + plain_start);
+            uint8_t *dst = (uint8_t*)(arr_b + plain_start);
+            const uint8_t *end = (uint8_t*)(arr_b + plain_stop);
             __m512i zmm0 = _mm512_load_si512(src);
             while (dst < end) {
                 _mm512_store_si512((void*)(dst), zmm0);
