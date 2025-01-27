@@ -3,6 +3,7 @@
  */
 #define _GNU_SOURCE
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -82,6 +83,9 @@ unsigned long long arr_size=0; /* array size (elements in array) */
 unsigned int test_type;
 /* fixed memcpy block size for -t2 */
 unsigned long long block_size=DEFAULT_BLOCK_SIZE;
+
+int sanity_check = 0;
+long arr_a_sum = 0;
 
 #ifdef NUMA
 void* mp_pages[1];
@@ -342,6 +346,7 @@ void usage()
     printf("Options:\n");
     printf("	-n: number of runs per test (0 to run forever)\n");
     printf("	-a: Don't display average\n");
+    printf("	-C: enable sanity checks\n");
     printf("	-t%d: memcpy test\n", TEST_MEMCPY);
     printf("	-t%d: plain (b[i]=a[i] style) test\n", TEST_PLAIN);
     printf("	-t%d: memcpy test with fixed block size\n", TEST_MCBLOCK);
@@ -370,7 +375,7 @@ void usage()
 
 /* allocate a test array and fill it with data
  * so as to force Linux to _really_ allocate it */
-long *make_array()
+long *make_array(long *sum)
 {
     unsigned long long t;
     unsigned int long_size=sizeof(long);
@@ -390,6 +395,12 @@ long *make_array()
     /* make sure both arrays are allocated, fill with pattern */
     for(t=0; t<arr_size; t++) {
         a[t]=0xaa;
+    }
+    if (sum != NULL) {
+        *sum = 0;
+        for(t=0; t<arr_size; t++) {
+            *sum += 0xaa;
+        }
     }
     return a;
 }
@@ -436,6 +447,9 @@ void *thread_worker(void *arg)
                 tmp += arr_a[t];
             }
             arr_a[plain_stop-1] = tmp;
+            if (sanity_check) {
+                assert(tmp == arr_a_sum);
+            }
         } else if(test_type==TEST_WRITE_PLAIN) {
             long tmp = 1374181804651713298;
             for(t=plain_start; t<plain_stop; t++) {
@@ -551,10 +565,12 @@ double worker()
         long tmp = 0;
         clock_gettime(CLOCK_MONOTONIC, &starttime);
         for(t=0; t<arr_size; t++) {
-            tmp ^= arr_a[t];
+            tmp += arr_a[t];
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
-        arr_a[arr_size-1] = tmp;
+        if (sanity_check) {
+            assert(tmp == arr_a_sum);
+        }
     } else if(test_type==TEST_WRITE_PLAIN) {
         long tmp = 0;
         clock_gettime(CLOCK_MONOTONIC, &starttime);
@@ -566,6 +582,7 @@ double worker()
     } else if(test_type==TEST_READ_AVX512) {
         __m512i zmm0 = _mm512_setzero_epi32();
         __m512i zmm1;
+        long tmp = 0;
         uint8_t *src = (uint8_t*)arr_a;
         const uint8_t *end = src + arr_size * sizeof(long);
         clock_gettime(CLOCK_MONOTONIC, &starttime);
@@ -575,7 +592,14 @@ double worker()
             src += 64;
         }
         clock_gettime(CLOCK_MONOTONIC, &endtime);
-        arr_a[arr_size-1] = (long)_mm512_reduce_add_epi64(zmm0);
+        tmp = (long)_mm512_reduce_add_epi64(zmm0);
+        if (sanity_check) {
+            if (tmp != arr_a_sum) {
+                printf("expected:       arr_a_sum == %12ld (%016lx)\n", arr_a_sum, arr_a_sum);
+                printf("output: arr_a[arr_size-1] == %12ld (%016lx)\n", tmp, tmp);
+            }
+            assert(tmp == arr_a_sum);
+        }
     } else if(test_type==TEST_WRITE_AVX512) {
         const uint8_t *src = (uint8_t*)arr_b;
         uint8_t *dst = (uint8_t*)arr_b;
@@ -650,7 +674,7 @@ int main(int argc, char **argv)
     tests[6]=0;
     tests[7]=0;
 
-    while((o=getopt(argc, argv, "ha:b:c:qn:N:t:B:")) != EOF) {
+    while((o=getopt(argc, argv, "ha:b:c:qn:N:t:B:C")) != EOF) {
         switch(o) {
             case 'h':
                 usage();
@@ -689,6 +713,9 @@ int main(int argc, char **argv)
                     printf("Error: what block size do you mean?\n");
                     exit(1);
                 }
+                break;
+            case 'C':
+                sanity_check = 1;
                 break;
             case 'q': /* quiet */
                 quiet=1;
@@ -770,7 +797,7 @@ int main(int argc, char **argv)
         if (!quiet) {
             printf("Allocating %lld elements = %lld MiB of input memory.\n", arr_size, arr_size*long_size / 1024 / 1024);
         }
-        arr_a=make_array();
+        arr_a=make_array(&arr_a_sum);
     }
 
 #ifdef NUMA
@@ -783,7 +810,7 @@ int main(int argc, char **argv)
         if (!quiet) {
             printf("Allocating %lld elements = %lld MiB of output memory.\n", arr_size, arr_size*long_size / 1024 / 1024);
         }
-        arr_b=make_array();
+        arr_b=make_array(NULL);
     }
 
 #ifdef NUMA
