@@ -751,6 +751,7 @@ int main(int argc, char **argv)
         tests[0]=1;
         tests[1]=1;
         tests[2]=1;
+        tests[3]=1;
         tests[4]=1;
         tests[5]=1;
         tests[6]=1;
