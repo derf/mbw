@@ -751,11 +751,13 @@ int main(int argc, char **argv)
         tests[0]=1;
         tests[1]=1;
         tests[2]=1;
-        tests[3]=1;
         tests[4]=1;
         tests[5]=1;
+#if HAVE_AVX512
+        tests[3]=1;
         tests[6]=1;
         tests[7]=1;
+#endif
     }
 
     if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]+tests[6]+tests[7]) != 1) ) {
