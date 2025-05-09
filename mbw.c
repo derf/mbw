@@ -459,25 +459,23 @@ void *thread_worker(void *arg)
         } else if(test_type==TEST_READ_AVX512) {
             __m512i zmm0 = _mm512_setzero_epi32();
             __m512i zmm1;
-            uint8_t *src = (uint8_t*)(arr_a + plain_start);
-            const uint8_t *end = (uint8_t*)(arr_a + plain_stop);
+            uint8_t *src = (uint8_t*)(arr_a + (plain_start & ~0x0000000000000007));
+            const uint8_t *end = (uint8_t*)(arr_a + (plain_stop & ~0x0000000000000007));
             long tmp = 0;
             while (src < end) {
                 zmm1 = _mm512_load_si512((const void *)src);
                 zmm0 = _mm512_add_epi64(zmm0, zmm1);
                 src += 64;
             }
-            tmp = (long)_mm512_reduce_add_epi64(zmm0);
+            tmp += (long)_mm512_reduce_add_epi64(zmm0);
             if (sanity_check) {
-                assert((plain_start & 0x0000000000000007) == 0);
-                assert((plain_stop & 0x0000000000000007) == 0);
                 partial_sum[thread_id] = tmp;
             }
         } else if(test_type==TEST_WRITE_AVX512) {
-            uint8_t *src = (uint8_t*)(arr_a + plain_start);
-            uint8_t *dst = (uint8_t*)(arr_b + plain_start);
-            const uint8_t *end = (uint8_t*)(arr_b + plain_stop);
-            __m512i zmm0 = _mm512_load_si512(src);
+            const long src = 0x0707070707070707;
+            uint8_t *dst = (uint8_t*)(arr_b + (plain_start & ~0x0000000000000007));
+            const uint8_t *end = (uint8_t*)(arr_b + (plain_stop & ~0x0000000000000007));
+            __m512i zmm0 = _mm512_load_si512(&src);
             while (dst < end) {
                 _mm512_store_si512((void*)(dst), zmm0);
                 dst += 64;
