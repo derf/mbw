@@ -1,24 +1,15 @@
 # Memory BandWidth benchmark
 
-MBW determines the read, write, and transfer bandwidth available to single- and multi-threaded userspace programs, optionally taking NUMA placement into account.
-It is not tuned to extremes, instead relying on simple read/write operations and memcpy.
+MBW determines the read, write, and copy bandwidth available to single- and multi-threaded userspace programs, optionally taking NUMA placement into account.
+It can either utilize simple for loops and memcpy, or run (experimental!) AVX512 read / write / copy benchmarks.
 
-This is an extended version of the benchmark originally developepd by Andras Horvath et al.
-Multi-threading, NUMA, and read/write support have been added by Birte Friesel.
-The original README follows.
+This is an extended version of the benchmark originally developepd by Andras Horvath et al., available at <http://github.com/raas/mbw> / <https://github.com/Willian-Zhang/mbw>.
+Multi-threading, NUMA, and read/write support were not present in the original versions.
 
----
+## References
 
-MBW determines the "copy" memory bandwidth available to userspace programs. Its simplistic approach models that of real applications. It is not tuned to extremes and it is not aware of hardware architecture, just like your average software package.
+Mirrors of the MBW repository are available at the following locations.
 
-2006, 2012 Andras.Horvath atnospam gmail.com
-2013 j.m.slocum atnospam gmail.com
-2022 Willian.Zhang
-
-http://github.com/raas/mbw
-https://github.com/Willian-Zhang/mbw
-
-'mbw 1000' to run copy memory test on all methods with 1 GiB memory.
-'mbw -h' for help
-
-watch out for swap usage (or turn off swap)
+ * [ESS](https://ess.cs.uos.de/git/software/smaug/mbw)
+ * [Finalrewind](https://git.finalrewind.org/derf/mbw)
+ * [GitHub](https://github.com/derf/mbw)
