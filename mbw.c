@@ -55,15 +55,16 @@
  * 2006, 2012 Andras.Horvath@gmail.com
  * 2013 j.m.slocum@gmail.com
  * (Special thanks to Stephen Pasich)
+ * 2025 birte.friesel@uos.de
  *
- * http://github.com/raas/mbw
+ * https://ess.cs.uos.de/git/software/smaug/mbw
  *
  * compile with:
- *			gcc -O -o mbw mbw.c
+ *			make
  *
  * run with eg.:
  *
- *			./mbw 300
+ *			./mbw 1024
  *
  * or './mbw -h' for help
  *
@@ -342,7 +343,7 @@ COPY_BLOCK_128_BACK63:
 
 void usage()
 {
-    printf("mbw memory benchmark v%s, https://github.com/raas/mbw\n", VERSION);
+    printf("mbw memory benchmark v%s, https://git.finalrewind.org/derf/mbw\n", VERSION);
     printf("Usage: mbw [options] array_size_in_MiB\n");
     printf("Options:\n");
     printf("	-n: number of runs per test (0 to run forever)\n");
@@ -694,6 +695,12 @@ int main(int argc, char **argv)
             case 'c': /* NUMA node */
                 numa_node_cpu = strtoul(optarg, (char **)NULL, 10);
                 break;
+#else
+            case 'a':
+            case 'b':
+            case 'c':
+                errx(1, "This build of mbw has been compiled without NUMA support. Recompile with numa=1 to enable -a/-b/-c");
+                break;
 #endif
             case 'n': /* no. loops */
                 nr_loops=strtoul(optarg, (char **)NULL, 10);
@@ -701,6 +708,10 @@ int main(int argc, char **argv)
 #ifdef MULTITHREADED
             case 'N': /* no. threads */
                 num_threads=strtoul(optarg, (char **)NULL, 10);
+                break;
+#else
+            case 'N':
+                errx(1, "This build of mbw has been compiled without mulit-threading support. Recompile with pthread=1 to enable -N");
                 break;
 #endif
             case 't': /* test to run */
@@ -731,16 +742,13 @@ int main(int argc, char **argv)
 
 #ifndef HAVE_AVX512
     if (tests[TEST_AVX512]) {
-        printf("Error: AVX512 memcpy requested, but this mbw build has been compiled without AVX512 support\n");
-        exit(1);
+        errx(1, "AVX512 memcpy requested, but this mbw build has been compiled without AVX512 support. Please recompile with avx512=1.");
     }
     if (tests[TEST_READ_AVX512]) {
-        printf("Error: AVX512 read requested, but this mbw build has been compiled without AVX512 support\n");
-        exit(1);
+        errx(1, "AVX512 read requested, but this mbw build has been compiled without AVX512 support. Please recompile with avx512=1.");
     }
     if (tests[TEST_WRITE_AVX512]) {
-        printf("Error: AVX512 write requested, but this mbw build has been compiled without AVX512 support\n");
-        exit(1);
+        errx(1, "AVX512 write requested, but this mbw build has been compiled without AVX512 support. Please recompile with avx512=1.");
     }
 #endif
 
@@ -759,20 +767,19 @@ int main(int argc, char **argv)
     }
 
     if( nr_loops==0 && ((tests[0]+tests[1]+tests[2]+tests[3]+tests[4]+tests[5]+tests[6]+tests[7]) != 1) ) {
-        printf("Error: nr_loops can be zero if only one test selected!\n");
-        exit(1);
+        errx(1, "-n 0 can only be specified if exactly one test is selected.");
     }
 
     if(optind<argc) {
-        mt=strtoul(argv[optind++], (char **)NULL, 10);
+        mt=strtoul(argv[optind], (char **)NULL, 10);
     } else {
-        printf("Error: no array size given!\n");
-        exit(1);
+        usage();
+        errx(1, "mandatory array size argument is missing");
     }
 
     if(0>=mt) {
-        printf("Error: array size wrong!\n");
-        exit(1);
+        usage();
+        errx(1, "Invalid array size '%s'", argv[optind]);
     }
 
     /* ------------------------------------------------------ */
