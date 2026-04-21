@@ -363,6 +363,8 @@ void usage()
 #endif
     printf("	-b <size>: block size in bytes for -t2 (default: %d)\n", DEFAULT_BLOCK_SIZE);
     printf("	-q: quiet (print statistics only)\n");
+#ifdef MULTITHREADED
+    printf("    -N <n>: use <n> threads for benchmarks\n");
 #ifdef NUMA
     printf("	-a <node>: allocate source array on NUMA node\n");
     printf("	-b <node>: allocate target array on NUMA node\n");
